@@ -20,7 +20,7 @@ Exclusively designed and maintained by **Mega Team Development®**.
 
 ## Official Application Slash Command Suite
 
-* `/setup logs` — Dynamically generates a secure, private logging channel (`📦-mega-logs`).
+* `/setup logs` — Dynamically generates a secure, private logging channel (`📦〢mega-logs`).
 * `/setup autoroles [member-role] [bot-role]` — Maps designated automatic entry credentials for humans and bots.
 * `/setup admin-placeholder [role]` — Sets the safe decorative/blank role given to returning administration targets.
 * `/give-role all [role]` — Safely initiates mass role deployment to every server user without triggering anti-raid modules.
