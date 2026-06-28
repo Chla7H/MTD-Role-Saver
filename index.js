@@ -135,7 +135,7 @@ client.on('interactionCreate', async interaction => {
             await interaction.deferReply({ ephemeral: true });
             try {
                 const logChannel = await guild.channels.create({
-                    name: '📦-mega-logs',
+                    name: '📦〢MTD-logs',
                     type: ChannelType.GuildText,
                     permissionOverwrites: [{ id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] }]
                 });
