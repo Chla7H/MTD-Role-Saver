@@ -1,9 +1,5 @@
 # Mega Role Saver & Hierarchical Protection System
 
-<p align="center">
-  <img src="https://i.imgur.com/" width="150" alt="Mega Team Logo">
-</p>
-
 An enterprise-grade role persistence and recovery system for Discord servers featuring automated role snapshot utilities and advanced hierarchical security mitigation.
 
 Exclusively coded and managed by **Mega Team Development®**.
