@@ -20,10 +20,13 @@ const client = new Client({
     ]
 });
 
-// Local JSON Database Setup
+// Cache map to track authorized role assignments and bypass the 10-second rule
+const botAssignedRoles = new Set();
+
+// Local JSON Storage Engine Initialization
 const DB_FILE = './database.json';
 if (!fs.existsSync(DB_FILE)) {
-    fs.writeFileSync(DB_FILE, JSON.stringify({ logsChannels: {}, savedRoles: {} }, null, 4));
+    fs.writeFileSync(DB_FILE, JSON.stringify({ logsChannels: {}, savedRoles: {}, memberRoles: {}, botRoles: {}, adminPlaceholders: {} }, null, 4));
 }
 
 function getDB() { return JSON.parse(fs.readFileSync(DB_FILE)); }
@@ -31,31 +34,79 @@ function saveDB(data) { fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 4))
 
 const LOGO_URL = "https://i.imgur.com/Xs2BKQN.png";
 
-// Ready Event & Status Configuration
+// Ready Event Hook & Custom Presence Definition
 client.once('ready', async () => {
-    console.log(`🚀 Mega Team Development® | System initialized as ${client.user.tag}`);
+    console.log(`🚀 Mega Team Development® | Master Client Active as ${client.user.tag}`);
     
-    // Configured with purple streaming badge and idle (orange) status dot
+    // Custom status parameters applied perfectly
     client.user.setPresence({
-        activities: [{ 
-            name: 'Discord.gg/MEGA', 
-            type: ActivityType.Streaming,
-            url: 'https://www.twitch.tv/mega_team' // Required by Discord to display the streaming style
-        }],
-        status: 'idle'
+        activities: [{ name: 'customstatus', state: 'Discord.gg/MEGA', type: ActivityType.Custom }],
+        status: 'idle', 
     });
 
-    // Deploy global registration command
+    // Deploy Application Slash Commands Layout
     const commands = [
         {
             name: 'setup',
-            description: 'Configure the Mega Team Role Saver system',
+            description: 'Configure Mega Team Automation Framework Modules',
             default_member_permissions: PermissionFlagsBits.Administrator.toString(),
             options: [
                 {
                     name: 'logs',
-                    description: 'Automatically generate a dedicated logs channel',
+                    description: 'Deploy the automated state-tracking log stream',
                     type: ApplicationCommandOptionType.Subcommand
+                },
+                {
+                    name: 'autoroles',
+                    description: 'Link automatic custom entry tags for newcomers',
+                    type: ApplicationCommandOptionType.Subcommand,
+                    options: [
+                        {
+                            name: 'member-role',
+                            description: 'Target role assigned automatically to arriving human members',
+                            type: ApplicationCommandOptionType.Role,
+                            required: true
+                        },
+                        {
+                            name: 'bot-role',
+                            description: 'Target role assigned automatically to arriving verified bots',
+                            type: ApplicationCommandOptionType.Role,
+                            required: true
+                        }
+                    ]
+                },
+                {
+                    name: 'admin-placeholder',
+                    description: 'Designate the structural cosmetic marker given to returning operators',
+                    type: ApplicationCommandOptionType.Subcommand,
+                    options: [
+                        {
+                            name: 'role',
+                            description: 'The blank name or decorative role assigned to historically verified admins',
+                            type: ApplicationCommandOptionType.Role,
+                            required: true
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            name: 'give-role',
+            description: 'Mass server modification and distribution engine',
+            default_member_permissions: PermissionFlagsBits.Administrator.toString(),
+            options: [
+                {
+                    name: 'all',
+                    description: 'Distribute a chosen role to all active guild accounts securely',
+                    type: ApplicationCommandOptionType.Subcommand,
+                    options: [
+                        {
+                            name: 'role',
+                            description: 'Target role for global distribution',
+                            type: ApplicationCommandOptionType.Role,
+                            required: true
+                        }
+                    ]
                 }
             ]
         }
@@ -64,13 +115,13 @@ client.once('ready', async () => {
     const rest = new REST({ version: '10' }).setToken(config.token);
     try {
         await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
-        console.log('✅ Mega Team Development® | Slash commands updated successfully.');
+        console.log('✅ Mega Team Development® | Synchronized all core global commands successfully.');
     } catch (error) {
-        console.error('❌ Error deploying slash commands:', error);
+        console.error('❌ Failed to register execution layout:', error);
     }
 });
 
-// Slash Command Interaction Manager
+// Slash Interaction Router Interface
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
@@ -82,41 +133,154 @@ client.on('interactionCreate', async interaction => {
 
         if (subcommand === 'logs') {
             await interaction.deferReply({ ephemeral: true });
-
             try {
-                // Auto-create a secured tracking channel
                 const logChannel = await guild.channels.create({
                     name: '📦-mega-logs',
                     type: ChannelType.GuildText,
-                    permissionOverwrites: [
-                        {
-                            id: guild.roles.everyone.id,
-                            deny: [PermissionFlagsBits.ViewChannel],
-                        }
-                    ]
+                    permissionOverwrites: [{ id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] }]
                 });
-
                 db.logsChannels[guild.id] = logChannel.id;
                 saveDB(db);
 
                 const embed = new EmbedBuilder()
-                    .setTitle('⚙️ System Logs Configured')
-                    .setDescription(`The automated logging channel has been deployed successfully: ${logChannel}`)
-                    .setColor('#2b2d31')
-                    .setThumbnail(LOGO_URL)
-                    .setFooter({ text: 'Mega Team Development®', iconURL: LOGO_URL })
-                    .setTimestamp();
-
+                    .setTitle('⚙️ System Registry Deployed')
+                    .setDescription(`Automated cryptographic logging streams bound to text module: ${logChannel}`)
+                    .setColor('#2b2d31').setThumbnail(LOGO_URL)
+                    .setFooter({ text: 'Mega Team Development®', iconURL: LOGO_URL }).setTimestamp();
                 await interaction.editReply({ embeds: [embed] });
             } catch (err) {
+                await interaction.editReply({ content: "❌ Permission Fault: Client cannot dynamically provision secure tracking layers." });
+            }
+        }
+
+        if (subcommand === 'autoroles') {
+            const memberRole = options.getRole('member-role');
+            const botRole = options.getRole('bot-role');
+
+            db.memberRoles[guild.id] = memberRole.id;
+            db.botRoles[guild.id] = botRole.id;
+            saveDB(db);
+
+            const embed = new EmbedBuilder()
+                .setTitle('⚙️ Gatekeepers Provisioned')
+                .setDescription(`**Human Accounts:** ${memberRole}\n**Automated Bots:** ${botRole}`)
+                .setColor('#2b2d31').setThumbnail(LOGO_URL)
+                .setFooter({ text: 'Mega Team Development®', iconURL: LOGO_URL }).setTimestamp();
+            await interaction.reply({ embeds: [embed], ephemeral: true });
+        }
+
+        if (subcommand === 'admin-placeholder') {
+            const role = options.getRole('role');
+            db.adminPlaceholders[guild.id] = role.id;
+            saveDB(db);
+
+            const embed = new EmbedBuilder()
+                .setTitle('⚙️ Security Marker Initialized')
+                .setDescription(`Historical operators holding Administrator attributes will receive the following aesthetic marker upon re-entry: ${role}`)
+                .setColor('#2b2d31').setThumbnail(LOGO_URL)
+                .setFooter({ text: 'Mega Team Development®', iconURL: LOGO_URL }).setTimestamp();
+            await interaction.reply({ embeds: [embed], ephemeral: true });
+        }
+    }
+
+    if (commandName === 'give-role') {
+        if (options.getSubcommand() === 'all') {
+            const role = options.getRole('role');
+            await interaction.reply({ content: `⏳ Compiling guild database maps. Spreading ${role} down the network chain...`, ephemeral: true });
+
+            try {
+                const members = await guild.members.fetch();
+                let assignedCount = 0;
+
+                for (const [id, member] of members) {
+                    if (!member.roles.cache.has(role.id) && role.editable) {
+                        const signatureKey = `${member.id}-${role.id}`;
+                        botAssignedRoles.add(signatureKey);
+                        
+                        await member.roles.add(role).catch(() => botAssignedRoles.delete(signatureKey));
+                        assignedCount++;
+                    }
+                }
+                await interaction.followUp({ content: `✅ Network Sync Completed! Safely modified **${assignedCount}** user entities.`, ephemeral: true });
+            } catch (err) {
                 console.error(err);
-                await interaction.editReply({ content: "❌ Error: Bot lacks 'Manage Channels' permission to deploy logs automatically." });
+                await interaction.followUp({ content: "❌ Data Stream Corrupted: Critical abort during mass iteration routine.", ephemeral: true });
             }
         }
     }
 });
 
-// Leave Event: Real-Time Hierarchy Verification Shield
+// Guard & Sync Layer: Combined 10s Auto-Removal Engine & Live Role Storage Sync
+client.on('guildMemberUpdate', async (oldMember, newMember) => {
+    const guildId = newMember.guild.id;
+    const userId = newMember.id;
+
+    // 1. LIVE ROLE SNAPSHOT SYSTEM (Fixes the 2nd leave tracking issue permanently)
+    if (!newMember.user.bot) {
+        const db = getDB();
+        if (!db.savedRoles[guildId]) db.savedRoles[guildId] = {};
+
+        let administratorPrivilegeDetected = false;
+        const safeBackupStack = [];
+
+        newMember.roles.cache.forEach(role => {
+            if (role.id === guildId) return; // Ignore @everyone
+            if (role.permissions.has(PermissionFlagsBits.Administrator)) {
+                administratorPrivilegeDetected = true;
+            } else {
+                safeBackupStack.push(role.id);
+            }
+        });
+
+        // Constantly keep the database populated with live clean snapshots
+        db.savedRoles[guildId][userId] = {
+            roles: safeBackupStack,
+            wasAdmin: administratorPrivilegeDetected
+        };
+        saveDB(db);
+    }
+
+    // 2. ANTI-RAID 10-SECOND SWEEPER PROTECTION
+    const addedRoles = newMember.roles.cache.filter(role => !oldMember.roles.cache.has(role.id));
+    if (addedRoles.size === 0) return;
+
+    addedRoles.forEach(role => {
+        const signatureKey = `${newMember.id}-${role.id}`;
+
+        if (botAssignedRoles.has(signatureKey)) {
+            botAssignedRoles.delete(signatureKey);
+            return;
+        }
+
+        // Schedule immediate destruction sweep in 10 seconds for unapproved external adjustments
+        setTimeout(async () => {
+            try {
+                const liveMember = await newMember.guild.members.fetch(newMember.id).catch(() => null);
+                if (liveMember && liveMember.roles.cache.has(role.id)) {
+                    await liveMember.roles.remove(role.id, "Mega Team Anti-Raid: Unapproved role variation detected.");
+
+                    const db = getDB();
+                    const logChannelId = db.logsChannels[liveMember.guild.id];
+                    if (logChannelId) {
+                        const logChannel = liveMember.guild.channels.cache.get(logChannelId);
+                        if (logChannel) {
+                            const embed = new EmbedBuilder()
+                                .setTitle('🛡️ Security Intercept: Rogue Assignment Purged')
+                                .setDescription(`**Account Targeted:** ${liveMember.user}\n**Purged Element:** ${role} (\`${role.name}\`)\n**Metrics:** Role added externally without passing application command whitelists. Cleaned in 10 seconds.`)
+                                .setColor('#ff4d4d').setThumbnail(LOGO_URL)
+                                .setFooter({ text: 'Mega Team Development®', iconURL: LOGO_URL }).setTimestamp();
+                            logChannel.send({ embeds: [embed] }).catch(() => {});
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error("Shield Error handling role destruction:", err);
+            }
+        }, 10000);
+    });
+});
+
+// Offboarding Phase: Utilize pre-saved live state data for guaranteed auditing logs
 client.on('guildMemberRemove', async member => {
     if (member.user.bot) return;
 
@@ -124,93 +288,116 @@ client.on('guildMemberRemove', async member => {
     const guildId = member.guild.id;
     const userId = member.id;
 
-    // Filter out @everyone role
-    const roles = member.roles.cache.filter(r => r.id !== member.guild.id).map(r => r.id);
+    // Retrieve the persistent real-time snapshot captured right before departure
+    let record = db.savedRoles[guildId]?.[userId];
+    
+    // Emergency fallback if user left immediately without updating states
+    if (!record) {
+        let administratorPrivilegeDetected = false;
+        const safeBackupStack = [];
+        member.roles.cache.forEach(role => {
+            if (role.id === guildId) return;
+            if (role.permissions.has(PermissionFlagsBits.Administrator)) administratorPrivilegeDetected = true;
+            else safeBackupStack.push(role.id);
+        });
+        if (!db.savedRoles[guildId]) db.savedRoles[guildId] = {};
+        db.savedRoles[guildId][userId] = { roles: safeBackupStack, wasAdmin: administratorPrivilegeDetected };
+        saveDB(db);
+        record = db.savedRoles[guildId][userId];
+    }
 
-    if (!db.savedRoles[guildId]) db.savedRoles[guildId] = {};
-
-    // DYNAMIC HIERARCHY CHECK: Compares member's highest role position against the bot's highest role position
-    const botMember = member.guild.members.me;
-    const isHigherThanBot = member.roles.highest.position >= botMember.roles.highest.position;
-
-    db.savedRoles[guildId][userId] = {
-        roles: isHigherThanBot ? [] : roles, // If user is above or equal to the bot, clear their saved roles profile completely
-        wasHigher: isHigherThanBot
-    };
-    saveDB(db);
-
-    // Logging Execution
     const logChannelId = db.logsChannels[guildId];
     if (logChannelId) {
         const logChannel = member.guild.channels.cache.get(logChannelId);
         if (logChannel) {
             const embed = new EmbedBuilder()
-                .setTitle('📥 Member Left — Role State Processed')
-                .setDescription(`**User:** ${member.user.tag} (\`${member.id}\`)\n**Hierarchy Security Check:** ${isHigherThanBot ? '⚠️ **Bypassed & Cleared** (User held a role higher than or equal to the bot. No roles saved.)' : `Successfully backed up **${roles.length}** roles.`}`)
-                .setColor(isHigherThanBot ? '#ff4d4d' : '#2b2d31')
-                .setThumbnail(LOGO_URL)
-                .setFooter({ text: 'Mega Team Development®', iconURL: LOGO_URL })
-                .setTimestamp();
-            
+                .setTitle('📥 State Preserved — User Session Ended')
+                .setDescription(`**User Element:** ${member.user.tag}\n**Saved Parameters:** Verified and tracked **${record.roles.length}** regular roles safely.\n**Admin Firewall Status:** ${record.wasAdmin ? '⚠️ ACTIVE (High-risk administrative privileges scrubbed from recovery logs)' : 'Inactive / Safe'}`)
+                .setColor(record.wasAdmin ? '#ffaa00' : '#2b2d31').setThumbnail(LOGO_URL)
+                .setFooter({ text: 'Mega Team Development®', iconURL: LOGO_URL }).setTimestamp();
             logChannel.send({ embeds: [embed] }).catch(() => {});
         }
     }
 });
 
-// Join Event: Role Reconstruction & Bypass Block
+// Onboarding Phase: Process Arrival Auto-Roles & Reconstruct Safe States (Typo Fixed)
 client.on('guildMemberAdd', async member => {
-    if (member.user.bot) return;
-
     const db = getDB();
     const guildId = member.guild.id;
-    const userId = member.id;
-
-    if (!db.savedRoles[guildId] || !db.savedRoles[guildId][userId]) return;
-
-    const userData = db.savedRoles[guildId][userId];
     const logChannelId = db.logsChannels[guildId];
     const logChannel = logChannelId ? member.guild.channels.cache.get(logChannelId) : null;
 
-    // Reject restoration if user tripped the hierarchy protection system
-    if (userData.wasHigher) {
-        if (logChannel) {
-            const embed = new EmbedBuilder()
-                .setTitle('🛡️ Security Bypass Notice')
-                .setDescription(`**User:** ${member.user} (\`${member.id}\`)\n**Action:** Automatic restoration skipped. This user holds a rank **above or equal to the bot's hierarchy** level. Roles must be managed manually by server owners.`)
-                .setColor('#ffaa00')
-                .setThumbnail(LOGO_URL)
-                .setFooter({ text: 'Mega Team Development®', iconURL: LOGO_URL })
-                .setTimestamp();
-            logChannel.send({ embeds: [embed] }).catch(() => {});
+    // 1. Differentiate and Deploy On-Join Gatekeeper Auto-Roles
+    if (member.user.bot) {
+        const structuralBotTarget = db.botRoles[guildId];
+        if (structuralBotTarget) {
+            const role = member.guild.roles.cache.get(structuralBotTarget);
+            if (role && role.editable) {
+                botAssignedRoles.add(`${member.id}-${role.id}`);
+                await member.roles.add(role).catch(() => botAssignedRoles.delete(`${member.id}-${role.id}`));
+            }
         }
-        return;
+    } else {
+        const structuralMemberTarget = db.memberRoles[guildId];
+        if (structuralMemberTarget) {
+            const role = member.guild.roles.cache.get(structuralMemberTarget);
+            if (role && role.editable) {
+                botAssignedRoles.add(`${member.id}-${role.id}`);
+                await member.roles.add(role).catch(() => botAssignedRoles.delete(`${member.id}-${role.id}`));
+            }
+        }
     }
 
-    // Process standard user role restoration
-    if (userData.roles && userData.roles.length > 0) {
-        const rolesToAdd = [];
-        for (const roleId of userData.roles) {
-            const role = member.guild.roles.cache.get(roleId);
-            // Verify bot can actually modify the role
-            if (role && role.editable) {
-                rolesToAdd.push(role);
+    // 2. State Reconstruction Sequences
+    if (!db.savedRoles[guildId] || !db.savedRoles[guildId][member.id]) return;
+    const historicalProfile = db.savedRoles[guildId][member.id];
+
+    // Typo completely fixed: now correctly maps layout changes to active users
+    if (historicalProfile.roles && historicalProfile.roles.length > 0) {
+        const executionStack = [];
+        for (const roleId of historicalProfile.roles) {
+            const targetRole = member.guild.roles.cache.get(roleId);
+            if (targetRole && targetRole.editable) {
+                botAssignedRoles.add(`${member.id}-${targetRole.id}`);
+                executionStack.push(targetRole);
             }
         }
+        if (executionStack.length > 0) {
+            await member.roles.add(executionStack).catch(() => {
+                executionStack.forEach(r => botAssignedRoles.delete(`${member.id}-${r.id}`));
+            });
+        }
+    }
 
-        if (rolesToAdd.length > 0) {
-            await member.roles.add(rolesToAdd).catch(console.error);
+    // Apply Cosmetic Identifier Badge if user previously tripped the admin firewall
+    if (historicalProfile.wasAdmin) {
+        const markerTargetId = db.adminPlaceholders[guildId];
+        if (markerTargetId) {
+            const markerRole = member.guild.roles.cache.get(markerTargetId);
+            if (markerRole && markerRole.editable) {
+                botAssignedRoles.add(`${member.id}-${markerRole.id}`);
+                await member.roles.add(markerRole).catch(() => botAssignedRoles.delete(`${member.id}-${markerRole.id}`));
 
-            if (logChannel) {
-                const embed = new EmbedBuilder()
-                    .setTitle('🔄 Roles Restored Successfully')
-                    .setDescription(`**User:** ${member.user} (\`${member.id}\`)\n**Restored Roles:** ${rolesToAdd.map(r => r.toString()).join(', ')}`)
-                    .setColor('#2b2d31')
-                    .setThumbnail(LOGO_URL)
-                    .setFooter({ text: 'Mega Team Development®', iconURL: LOGO_URL })
-                    .setTimestamp();
-                logChannel.send({ embeds: [embed] }).catch(() => {});
+                if (logChannel) {
+                    const embed = new EmbedBuilder()
+                        .setTitle('🛡️ Security Firewall Notice: Operator Return')
+                        .setDescription(`**User Identity:** ${member.user}\n**System Action:** Normal profile assets re-applied. Crucial administrative vectors blocked. Cosmetic marker appended: ${markerRole}`)
+                        .setColor('#00ffaa').setThumbnail(LOGO_URL)
+                        .setFooter({ text: 'Mega Team Development®', iconURL: LOGO_URL }).setTimestamp();
+                    logChannel.send({ embeds: [embed] }).catch(() => {});
+                }
+                return;
             }
         }
+    }
+
+    if (logChannel && historicalProfile.roles.length > 0) {
+        const embed = new EmbedBuilder()
+            .setTitle('🔄 Profile Reconstitution Completed')
+            .setDescription(`**User Identity:** ${member.user}\n**State Action:** Stored custom regular profiles updated and attached.`)
+            .setColor('#2b2d31').setThumbnail(LOGO_URL)
+            .setFooter({ text: 'Mega Team Development®', iconURL: LOGO_URL }).setTimestamp();
+        logChannel.send({ embeds: [embed] }).catch(() => {});
     }
 });
 
