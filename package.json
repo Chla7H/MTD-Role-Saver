@@ -1,0 +1,12 @@
+{
+  "name": "MTD-Role-Saver",
+  "version": "1.0.0",
+  "description": "Advanced role saving system by Mega Team Development®",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.14.1"
+  }
+}
