@@ -32,3 +32,4 @@ Exclusively designed and maintained by **Mega Team Development®**.
 2. Download core module dependencies to the system root:
    ```bash
    npm install discord.js
+   node index.js
