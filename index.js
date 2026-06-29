@@ -20,9 +20,6 @@ const client = new Client({
     ]
 });
 
-// Cache map to track authorized role assignments and bypass the 10-second rule
-const botAssignedRoles = new Set();
-
 // Local JSON Storage Engine Initialization
 const DB_FILE = './database.json';
 if (!fs.existsSync(DB_FILE)) {
@@ -34,14 +31,18 @@ function saveDB(data) { fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 4))
 
 const LOGO_URL = "https://i.imgur.com/Xs2BKQN.png";
 
-// Ready Event Hook & Custom Presence Definition
+// Ready Event Hook & Streaming Presence Definition
 client.once('ready', async () => {
     console.log(`🚀 Mega Team Development® | Master Client Active as ${client.user.tag}`);
     
-    // Custom status parameters applied perfectly
+    // Configured for a constant purple streaming status badge
     client.user.setPresence({
-        activities: [{ name: 'customstatus', state: 'Discord.gg/MEGA', type: ActivityType.Custom }],
-        status: 'idle', 
+        activities: [{ 
+            name: 'Discord.gg/MEGA', 
+            type: ActivityType.Streaming,
+            url: 'https://www.twitch.tv/mega_team' // Streaming type requires a valid link format to trigger the purple icon
+        }],
+        status: 'online'
     });
 
     // Deploy Application Slash Commands Layout
@@ -135,7 +136,7 @@ client.on('interactionCreate', async interaction => {
             await interaction.deferReply({ ephemeral: true });
             try {
                 const logChannel = await guild.channels.create({
-                    name: '📦〢MTD-logs',
+                    name: '📦-mega-logs',
                     type: ChannelType.GuildText,
                     permissionOverwrites: [{ id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] }]
                 });
@@ -194,10 +195,7 @@ client.on('interactionCreate', async interaction => {
 
                 for (const [id, member] of members) {
                     if (!member.roles.cache.has(role.id) && role.editable) {
-                        const signatureKey = `${member.id}-${role.id}`;
-                        botAssignedRoles.add(signatureKey);
-                        
-                        await member.roles.add(role).catch(() => botAssignedRoles.delete(signatureKey));
+                        await member.roles.add(role).catch(() => {});
                         assignedCount++;
                     }
                 }
@@ -210,77 +208,36 @@ client.on('interactionCreate', async interaction => {
     }
 });
 
-// Guard & Sync Layer: Combined 10s Auto-Removal Engine & Live Role Storage Sync
+// Live Role Sync Module (Keeps roles accurately backed up in real-time)
 client.on('guildMemberUpdate', async (oldMember, newMember) => {
+    if (newMember.user.bot) return;
+
     const guildId = newMember.guild.id;
     const userId = newMember.id;
+    const db = getDB();
 
-    // 1. LIVE ROLE SNAPSHOT SYSTEM (Fixes the 2nd leave tracking issue permanently)
-    if (!newMember.user.bot) {
-        const db = getDB();
-        if (!db.savedRoles[guildId]) db.savedRoles[guildId] = {};
+    if (!db.savedRoles[guildId]) db.savedRoles[guildId] = {};
 
-        let administratorPrivilegeDetected = false;
-        const safeBackupStack = [];
+    let administratorPrivilegeDetected = false;
+    const safeBackupStack = [];
 
-        newMember.roles.cache.forEach(role => {
-            if (role.id === guildId) return; // Ignore @everyone
-            if (role.permissions.has(PermissionFlagsBits.Administrator)) {
-                administratorPrivilegeDetected = true;
-            } else {
-                safeBackupStack.push(role.id);
-            }
-        });
-
-        // Constantly keep the database populated with live clean snapshots
-        db.savedRoles[guildId][userId] = {
-            roles: safeBackupStack,
-            wasAdmin: administratorPrivilegeDetected
-        };
-        saveDB(db);
-    }
-
-    // 2. ANTI-RAID 10-SECOND SWEEPER PROTECTION
-    const addedRoles = newMember.roles.cache.filter(role => !oldMember.roles.cache.has(role.id));
-    if (addedRoles.size === 0) return;
-
-    addedRoles.forEach(role => {
-        const signatureKey = `${newMember.id}-${role.id}`;
-
-        if (botAssignedRoles.has(signatureKey)) {
-            botAssignedRoles.delete(signatureKey);
-            return;
+    newMember.roles.cache.forEach(role => {
+        if (role.id === guildId) return; // Skip @everyone
+        if (role.permissions.has(PermissionFlagsBits.Administrator)) {
+            administratorPrivilegeDetected = true;
+        } else {
+            safeBackupStack.push(role.id); // All safe roles are preserved perfectly
         }
-
-        // Schedule immediate destruction sweep in 10 seconds for unapproved external adjustments
-        setTimeout(async () => {
-            try {
-                const liveMember = await newMember.guild.members.fetch(newMember.id).catch(() => null);
-                if (liveMember && liveMember.roles.cache.has(role.id)) {
-                    await liveMember.roles.remove(role.id, "Mega Team Anti-Raid: Unapproved role variation detected.");
-
-                    const db = getDB();
-                    const logChannelId = db.logsChannels[liveMember.guild.id];
-                    if (logChannelId) {
-                        const logChannel = liveMember.guild.channels.cache.get(logChannelId);
-                        if (logChannel) {
-                            const embed = new EmbedBuilder()
-                                .setTitle('🛡️ Security Intercept: Rogue Assignment Purged')
-                                .setDescription(`**Account Targeted:** ${liveMember.user}\n**Purged Element:** ${role} (\`${role.name}\`)\n**Metrics:** Role added externally without passing application command whitelists. Cleaned in 10 seconds.`)
-                                .setColor('#ff4d4d').setThumbnail(LOGO_URL)
-                                .setFooter({ text: 'Mega Team Development®', iconURL: LOGO_URL }).setTimestamp();
-                            logChannel.send({ embeds: [embed] }).catch(() => {});
-                        }
-                    }
-                }
-            } catch (err) {
-                console.error("Shield Error handling role destruction:", err);
-            }
-        }, 10000);
     });
+
+    db.savedRoles[guildId][userId] = {
+        roles: safeBackupStack,
+        wasAdmin: administratorPrivilegeDetected
+    };
+    saveDB(db);
 });
 
-// Offboarding Phase: Utilize pre-saved live state data for guaranteed auditing logs
+// Offboarding Phase: Capture persistent real-time snapshot data on departure
 client.on('guildMemberRemove', async member => {
     if (member.user.bot) return;
 
@@ -288,10 +245,9 @@ client.on('guildMemberRemove', async member => {
     const guildId = member.guild.id;
     const userId = member.id;
 
-    // Retrieve the persistent real-time snapshot captured right before departure
     let record = db.savedRoles[guildId]?.[userId];
     
-    // Emergency fallback if user left immediately without updating states
+    // Emergency live fallback if record cache is empty
     if (!record) {
         let administratorPrivilegeDetected = false;
         const safeBackupStack = [];
@@ -312,7 +268,7 @@ client.on('guildMemberRemove', async member => {
         if (logChannel) {
             const embed = new EmbedBuilder()
                 .setTitle('📥 State Preserved — User Session Ended')
-                .setDescription(`**User Element:** ${member.user.tag}\n**Saved Parameters:** Verified and tracked **${record.roles.length}** regular roles safely.\n**Admin Firewall Status:** ${record.wasAdmin ? '⚠️ ACTIVE (High-risk administrative privileges scrubbed from recovery logs)' : 'Inactive / Safe'}`)
+                .setDescription(`**User Element:** ${member.user.tag}\n**Saved Parameters:** Cataloged **${record.roles.length}** normal roles safely.\n**Admin Isolation Status:** ${record.wasAdmin ? '⚠️ MODIFIED (Dangerous administrative roles stripped and prepared for replacement)' : 'Safe / Clean Profile'}`)
                 .setColor(record.wasAdmin ? '#ffaa00' : '#2b2d31').setThumbnail(LOGO_URL)
                 .setFooter({ text: 'Mega Team Development®', iconURL: LOGO_URL }).setTimestamp();
             logChannel.send({ embeds: [embed] }).catch(() => {});
@@ -320,85 +276,91 @@ client.on('guildMemberRemove', async member => {
     }
 });
 
-// Onboarding Phase: Process Arrival Auto-Roles & Reconstruct Safe States (Typo Fixed)
+// Onboarding Phase: 10-Second Delay Allocation & Custom Recovery Engine
 client.on('guildMemberAdd', async member => {
-    const db = getDB();
     const guildId = member.guild.id;
+    const db = getDB();
+    
     const logChannelId = db.logsChannels[guildId];
     const logChannel = logChannelId ? member.guild.channels.cache.get(logChannelId) : null;
 
-    // 1. Differentiate and Deploy On-Join Gatekeeper Auto-Roles
-    if (member.user.bot) {
-        const structuralBotTarget = db.botRoles[guildId];
-        if (structuralBotTarget) {
-            const role = member.guild.roles.cache.get(structuralBotTarget);
-            if (role && role.editable) {
-                botAssignedRoles.add(`${member.id}-${role.id}`);
-                await member.roles.add(role).catch(() => botAssignedRoles.delete(`${member.id}-${role.id}`));
-            }
-        }
-    } else {
-        const structuralMemberTarget = db.memberRoles[guildId];
-        if (structuralMemberTarget) {
-            const role = member.guild.roles.cache.get(structuralMemberTarget);
-            if (role && role.editable) {
-                botAssignedRoles.add(`${member.id}-${role.id}`);
-                await member.roles.add(role).catch(() => botAssignedRoles.delete(`${member.id}-${role.id}`));
-            }
-        }
+    if (logChannel) {
+        const delayNotice = new EmbedBuilder()
+            .setTitle('⏳ Queued Entry System Activation')
+            .setDescription(`**User Identity:** ${member.user}\n**Status:** Processing entry stream. Connection delayed for **10 seconds** before roles attach.`)
+            .setColor('#ffaa00')
+            .setThumbnail(LOGO_URL)
+            .setFooter({ text: 'Mega Team Development®', iconURL: LOGO_URL }).setTimestamp();
+        logChannel.send({ embeds: [delayNotice] }).catch(() => {});
     }
 
-    // 2. State Reconstruction Sequences
-    if (!db.savedRoles[guildId] || !db.savedRoles[guildId][member.id]) return;
-    const historicalProfile = db.savedRoles[guildId][member.id];
+    // DELAY EXECUTION: Wait exactly 10 seconds before acting
+    setTimeout(async () => {
+        try {
+            // Re-fetch member object to ensure they didn't instantly leave within the 10 seconds
+            const activeMember = await member.guild.members.fetch(member.id).catch(() => null);
+            if (!activeMember) return;
 
-    // Typo completely fixed: now correctly maps layout changes to active users
-    if (historicalProfile.roles && historicalProfile.roles.length > 0) {
-        const executionStack = [];
-        for (const roleId of historicalProfile.roles) {
-            const targetRole = member.guild.roles.cache.get(roleId);
-            if (targetRole && targetRole.editable) {
-                botAssignedRoles.add(`${member.id}-${targetRole.id}`);
-                executionStack.push(targetRole);
+            const rolesToApply = [];
+
+            // 1. Process Delayed Gateway Auto-Roles
+            if (activeMember.user.bot) {
+                const targetBotRole = db.botRoles[guildId];
+                if (targetBotRole) {
+                    const role = activeMember.guild.roles.cache.get(targetBotRole);
+                    if (role && role.editable) rolesToApply.push(role);
+                }
+            } else {
+                const targetMemRole = db.memberRoles[guildId];
+                if (targetMemRole) {
+                    const role = activeMember.guild.roles.cache.get(targetMemRole);
+                    if (role && role.editable) rolesToApply.push(role);
+                }
             }
-        }
-        if (executionStack.length > 0) {
-            await member.roles.add(executionStack).catch(() => {
-                executionStack.forEach(r => botAssignedRoles.delete(`${member.id}-${r.id}`));
-            });
-        }
-    }
 
-    // Apply Cosmetic Identifier Badge if user previously tripped the admin firewall
-    if (historicalProfile.wasAdmin) {
-        const markerTargetId = db.adminPlaceholders[guildId];
-        if (markerTargetId) {
-            const markerRole = member.guild.roles.cache.get(markerTargetId);
-            if (markerRole && markerRole.editable) {
-                botAssignedRoles.add(`${member.id}-${markerRole.id}`);
-                await member.roles.add(markerRole).catch(() => botAssignedRoles.delete(`${member.id}-${markerRole.id}`));
+            // 2. Fetch Stored Profile Restoration Assets
+            const historicalProfile = db.savedRoles[guildId]?.[activeMember.id];
+            if (historicalProfile) {
+                // Collect saved regular non-admin roles
+                if (historicalProfile.roles && historicalProfile.roles.length > 0) {
+                    for (const roleId of historicalProfile.roles) {
+                        const targetRole = activeMember.guild.roles.cache.get(roleId);
+                        if (targetRole && targetRole.editable) {
+                            rolesToApply.push(targetRole);
+                        }
+                    }
+                }
+
+                // Append the Custom Admin Placeholder role if the user previously held administrative flags
+                if (historicalProfile.wasAdmin) {
+                    const markerId = db.adminPlaceholders[guildId];
+                    if (markerId) {
+                        const markerRole = activeMember.guild.roles.cache.get(markerId);
+                        if (markerRole && markerRole.editable) {
+                            rolesToApply.push(markerRole);
+                        }
+                    }
+                }
+            }
+
+            // Apply all compiled assets in a single, clean payload request
+            if (rolesToApply.length > 0) {
+                await activeMember.roles.add(rolesToApply).catch(console.error);
 
                 if (logChannel) {
-                    const embed = new EmbedBuilder()
-                        .setTitle('🛡️ Security Firewall Notice: Operator Return')
-                        .setDescription(`**User Identity:** ${member.user}\n**System Action:** Normal profile assets re-applied. Crucial administrative vectors blocked. Cosmetic marker appended: ${markerRole}`)
-                        .setColor('#00ffaa').setThumbnail(LOGO_URL)
+                    const successEmbed = new EmbedBuilder()
+                        .setTitle('🔄 Role Deployment Complete')
+                        .setDescription(`**User Identity:** ${activeMember.user}\n**Action Taken:** 10-second queue resolved. Applied **${rolesToApply.length}** structural roles. Normal profile restored with high-risk Admin permission nodes scrubbed.`)
+                        .setColor('#00ffaa')
+                        .setThumbnail(LOGO_URL)
                         .setFooter({ text: 'Mega Team Development®', iconURL: LOGO_URL }).setTimestamp();
-                    logChannel.send({ embeds: [embed] }).catch(() => {});
+                    logChannel.send({ embeds: [successEmbed] }).catch(() => {});
                 }
-                return;
             }
+        } catch (error) {
+            console.error("Delayed assignment engine encountered a critical error: ", error);
         }
-    }
-
-    if (logChannel && historicalProfile.roles.length > 0) {
-        const embed = new EmbedBuilder()
-            .setTitle('🔄 Profile Reconstitution Completed')
-            .setDescription(`**User Identity:** ${member.user}\n**State Action:** Stored custom regular profiles updated and attached.`)
-            .setColor('#2b2d31').setThumbnail(LOGO_URL)
-            .setFooter({ text: 'Mega Team Development®', iconURL: LOGO_URL }).setTimestamp();
-        logChannel.send({ embeds: [embed] }).catch(() => {});
-    }
+    }, 10000); // 10000 milliseconds = 10 seconds delay
 });
 
 client.login(config.token);
